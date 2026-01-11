@@ -1,123 +1,150 @@
-This project is a procedural skeletal dragon animation built using Python and Pygame.
-The dragon dynamically walks toward the mouse cursor, with realistic leg movement, joints, spine, tail, and skull structure, giving it a lifelike walking behavior similar to modern cursor-following creature animations.
+import pygame
+import math
 
-Unlike sprite-based animations, the dragon is generated entirely using mathematics and vectors, making it flexible, lightweight, and highly customizable.
+# ---------------- CONFIG ----------------
+WIDTH, HEIGHT = 1100, 750
+FPS = 60
+BG = (0, 0, 0)
+BONE = (230, 230, 230)
+JOINT = (180, 180, 180)
 
-🎯 Key Features
+pygame.init()
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Walking Skeletal Dragon")
+clock = pygame.time.Clock()
 
-🖱️ Cursor Chasing Behavior – The dragon intelligently moves toward the mouse position.
+# ---------------- DRAGON ----------------
+class SkeletalDragon:
+    def __init__(self, x, y):
+        self.speed = 4
+        self.segs = 50
+        self.spacing = 9
+        self.walk_time = 0
 
-🦴 Procedural Skeleton System – Spine, ribs, legs, joints, skull, and tail are drawn dynamically.
+        self.head = pygame.Vector2(x, y)
+        self.spine = [pygame.Vector2(x - i * self.spacing, y)
+                      for i in range(self.segs)]
 
-🚶 Realistic Walking Animation – Legs swing alternately using sine-wave motion.
+        # leg positions
+        self.legs = [10, 14, 20, 24]
 
-🧠 Physics-Based Motion – Smooth following using vector math (no teleporting).
+    def update(self, mx, my):
+        target = pygame.Vector2(mx, my)
+        d = target - self.head
+        dist = d.length()
 
-⚡ Lightweight & Fast – No sprites, no assets, pure code-driven animation.
+        if dist > 5:
+            d.normalize_ip()
+            self.head += d * self.speed
+            self.walk_time += 0.2
 
-🎮 Interactive – Real-time response to mouse movement.
+        self.spine[0] = self.head
 
-🛠️ Technologies Used
+        # spine follow
+        for i in range(1, self.segs):
+            v = self.spine[i] - self.spine[i - 1]
+            if v.length() == 0:
+                continue
+            v.scale_to_length(self.spacing)
+            self.spine[i] = self.spine[i - 1] + v
 
-Python 3
+    def draw(self, s):
+        # spine
+        for i in range(self.segs - 1):
+            pygame.draw.line(s, BONE, self.spine[i], self.spine[i + 1], 1)
 
-Pygame
+        for i in range(1, self.segs):
+            p = self.spine[i]
+            d = self.spine[i - 1] - p
+            if d.length() == 0:
+                continue
+            d.normalize_ip()
+            perp = pygame.Vector2(-d.y, d.x)
 
-Vector Mathematics
+            # ribs
+            if 4 < i < 28:
+                size = 18 * (1 - i / 28)
+                pygame.draw.line(s, BONE, p, p + perp * size - d * 4, 1)
+                pygame.draw.line(s, BONE, p, p - perp * size - d * 4, 1)
 
-Trigonometric Motion (Sine Waves)
+            # legs
+            if i in self.legs:
+                phase = self.walk_time + i
+                self.draw_leg(s, p, d, perp, phase, 1)
+                self.draw_leg(s, p, d, perp, phase + math.pi, -1)
 
-🧩 How It Works
-1. Spine System
+        self.draw_head(s)
+        self.draw_tail(s)
 
-The dragon consists of multiple connected segments.
+    # ---------------- WALKING LEG ----------------
+    def draw_leg(self, s, hip, d, perp, phase, side):
+        swing = math.sin(phase) * 6
+        lift = abs(math.sin(phase)) * 5
 
-Each segment follows the previous one at a fixed distance, creating a smooth body flow.
+        hip_joint = hip + perp * side * 7
+        knee = hip_joint + perp * side * (16 + swing) + d * 8
+        ankle = knee + perp * side * (14 + swing) + d * 8
+        foot = ankle + d * (10 - lift)
 
-2. Walking Legs
+        pygame.draw.line(s, BONE, hip, hip_joint, 1)
+        pygame.draw.line(s, BONE, hip_joint, knee, 1)
+        pygame.draw.line(s, BONE, knee, ankle, 1)
+        pygame.draw.line(s, BONE, ankle, foot, 1)
 
-Each leg has:
+        pygame.draw.circle(s, JOINT, hip_joint, 3)
+        pygame.draw.circle(s, JOINT, knee, 3)
+        pygame.draw.circle(s, JOINT, ankle, 2)
 
-Hip
+    # ---------------- HEAD / SKULL ----------------
+    def draw_head(self, s):
+        h = self.spine[0]
+        d = self.spine[0] - self.spine[1]
+        if d.length() == 0:
+            return
+        d.normalize_ip()
+        perp = pygame.Vector2(-d.y, d.x)
 
-Knee
+        skull_tip = h + d * 20
+        jaw = h + d * 14 - perp * 6
 
-Ankle
+        pygame.draw.line(s, BONE, h, skull_tip, 2)
+        pygame.draw.line(s, BONE, h, jaw, 1)
 
-Foot
+        for side in (-1, 1):
+            horn_base = h - d * 3 + perp * side * 5
+            horn_tip = horn_base - d * 12 + perp * side * 6
+            pygame.draw.line(s, BONE, horn_base, horn_tip, 1)
 
-Legs swing using a sine function:
+    # ---------------- TAIL ----------------
+    def draw_tail(self, s):
+        t = self.spine[-1]
+        p = self.spine[-2]
+        d = t - p
+        if d.length() == 0:
+            return
+        d.normalize_ip()
+        perp = pygame.Vector2(-d.y, d.x)
 
-Front and back legs move in opposite phases.
+        pygame.draw.line(s, BONE, t, t + d * 18, 1)
+        pygame.draw.line(s, BONE, t, t + d * 14 + perp * 6, 1)
+        pygame.draw.line(s, BONE, t, t + d * 14 - perp * 6, 1)
 
-This creates a natural walking cycle.
+# ---------------- MAIN ----------------
+dragon = SkeletalDragon(WIDTH // 2, HEIGHT // 2)
+running = True
 
-3. Head & Skull
+while running:
+    for e in pygame.event.get():
+        if e.type == pygame.QUIT:
+            running = False
 
-The skull is direction-aware and always faces the movement direction.
+    mx, my = pygame.mouse.get_pos()
+    dragon.update(mx, my)
 
-Horns and jaw are added for a more dragon-like appearance.
+    screen.fill(BG)
+    dragon.draw(screen)
 
-4. Tail Motion
+    pygame.display.flip()
+    clock.tick(FPS)
 
-The tail follows the spine and spreads outward at the end to give a skeletal tail look.
-
-🖥️ Installation & Run
-Requirements
-
-Python 3.8+
-
-Pygame
-
-Install Pygame
-pip install pygame
-
-Run the Project
-python dragon.py
-
-🎮 Controls
-
-Move Mouse → Dragon walks toward the cursor
-
-Close Window → Exit the program
-
-📸 Preview
-
-A skeletal dragon smoothly walking across the screen, following the mouse cursor with realistic joint movement and spine flow.
-
-(You can add a GIF or video demo here for GitHub)
-
-🔧 Customization Ideas
-
-Add ground detection for feet placement
-
-Add wing bones and flapping animation
-
-Convert into a game enemy AI
-
-Add color themes or glowing bones
-
-Add sound effects or background music
-
-🚀 Future Scope
-
-This project can be extended into:
-
-A game AI creature
-
-A procedural animation engine
-
-A cursor pet application
-
-A hackathon visual demo
-
-A learning project for physics-based animation
-
-🤝 Credits
-
-Developed by Gourab
-Built with curiosity, math, and creativity 🧠✨
-
-📜 License
-
-This project is open-source and free to use for learning and experimentation.
+pygame.quit()
